@@ -30,8 +30,7 @@ jobs:
         run: |
           npm i -g autocannon >/dev/null 2>&1
           curl -sI localhost:3000/ | grep -i location
-          for u in /studio /assistant /workflow/x; do curl -s -o /dev/null -w "$u -> %{http_code} %{size_download}B %{time_total}s
-" localhost:3000$u; done
+          for u in /studio /assistant /workflow/x; do curl -s -o /dev/null -w "$u %{http_code} %{size_download}B %{time_total}s " localhost:3000$u; echo; done
           for c in 10 100 400; do
             echo "=== $c connections, 30s, GET /studio ==="
             autocannon -c $c -d 30 --renderStatusCodes http://localhost:3000/studio 2>&1 | grep -E "Latency|Req/Sec|requests in|2xx|errors|timeouts|\[" | head -12
