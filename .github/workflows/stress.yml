@@ -26,16 +26,26 @@ jobs:
       - name: Discover routes
         working-directory: app
         run: find app -name 'page.*' -o -name 'route.*' | head -50
-      - name: Load test (ramp 10 -> 100 -> 400 connections)
+      - name: Load test real pages
         run: |
           npm i -g autocannon >/dev/null 2>&1
+          curl -sI localhost:3000/ | grep -i location
+          for u in /studio /assistant /workflow/x; do curl -s -o /dev/null -w "$u -> %{http_code} %{size_download}B %{time_total}s
+" localhost:3000$u; done
           for c in 10 100 400; do
-            echo "=== $c connections, 30s, GET / ==="
-            autocannon -c $c -d 30 --renderStatusCodes http://localhost:3000/ 2>&1 | tail -30
+            echo "=== $c connections, 30s, GET /studio ==="
+            autocannon -c $c -d 30 --renderStatusCodes http://localhost:3000/studio 2>&1 | grep -E "Latency|Req/Sec|requests in|2xx|errors|timeouts|\[" | head -12
           done
-          echo "=== junk/404 + bad POST ==="
-          autocannon -c 50 -d 10 --renderStatusCodes http://localhost:3000/does-not-exist 2>&1 | tail -15
-          autocannon -c 50 -d 10 -m POST -H 'content-type: application/json' -b '{"bad":' --renderStatusCodes http://localhost:3000/api/generate 2>&1 | tail -15
+          echo "=== 100 conns /assistant ==="
+          autocannon -c 100 -d 20 --renderStatusCodes http://localhost:3000/assistant 2>&1 | grep -E "Latency|Req/Sec|requests in|2xx|errors|timeouts"
+          echo "=== API proxy, no key, 50 conns ==="
+          autocannon -c 50 -d 10 --renderStatusCodes http://localhost:3000/api/app/x 2>&1 | grep -E "Latency|requests in|2xx|errors|\["
+          echo "=== bad JSON POST, 50 conns ==="
+          autocannon -c 50 -d 10 -m POST -H 'content-type: application/json' -b '{"bad":' --renderStatusCodes http://localhost:3000/api/v1/get_upload_url 2>&1 | grep -E "Latency|requests in|2xx|errors|\["
+          echo "=== 50MB junk upload ==="
+          head -c 52428800 /dev/urandom > big.bin
+          curl -s -o /dev/null -w "upload: %{http_code} %{time_total}s
+" -X POST --data-binary @big.bin localhost:3000/api/upload-binary
       - name: Server health after load
         run: |
           curl -s -o /dev/null -w "after load: %{http_code} %{time_total}s\n" localhost:3000
