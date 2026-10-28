@@ -1,0 +1,46 @@
+name: stress
+on: workflow_dispatch
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Clone upstream (pinned to default branch HEAD)
+        run: |
+          git clone --recurse-submodules --depth 1 https://github.com/Anil-matcha/Open-Generative-AI app
+          cd app && git rev-parse HEAD | tee ../commit.txt
+      - name: Install
+        working-directory: app
+        run: npm install --no-audit --no-fund 2>&1 | tail -20
+      - name: Build
+        working-directory: app
+        run: (npm run build:packages || true) 2>&1 | tail -30; npm run build 2>&1 | tail -40
+      - name: Start server
+        working-directory: app
+        run: |
+          nohup npm start -- -p 3000 > ../server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3000 >/dev/null && break; sleep 2; done
+          curl -s -o /dev/null -w "home: %{http_code} %{time_total}s\n" localhost:3000
+      - name: Discover routes
+        working-directory: app
+        run: find app -name 'page.*' -o -name 'route.*' | head -50
+      - name: Load test (ramp 10 -> 100 -> 400 connections)
+        run: |
+          npm i -g autocannon >/dev/null 2>&1
+          for c in 10 100 400; do
+            echo "=== $c connections, 30s, GET / ==="
+            autocannon -c $c -d 30 --renderStatusCodes http://localhost:3000/ 2>&1 | tail -30
+          done
+          echo "=== junk/404 + bad POST ==="
+          autocannon -c 50 -d 10 --renderStatusCodes http://localhost:3000/does-not-exist 2>&1 | tail -15
+          autocannon -c 50 -d 10 -m POST -H 'content-type: application/json' -b '{"bad":' --renderStatusCodes http://localhost:3000/api/generate 2>&1 | tail -15
+      - name: Server health after load
+        run: |
+          curl -s -o /dev/null -w "after load: %{http_code} %{time_total}s\n" localhost:3000
+          ps -o rss,cmd -C node | sort -rn | head -3
+          echo "--- errors in server log ---"; grep -ciE "error|unhandled|ECONN" server.log || true; tail -30 server.log
+      - name: Dependency audit
+        working-directory: app
+        run: npm audit --omit=dev 2>&1 | tail -25 || true
