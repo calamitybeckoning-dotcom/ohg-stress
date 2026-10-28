@@ -28,6 +28,7 @@ jobs:
         run: find app -name 'page.*' -o -name 'route.*' | head -50
       - name: Load test real pages
         run: |
+          set +e +o pipefail
           npm i -g autocannon >/dev/null 2>&1
           curl -sI localhost:3000/ | grep -i location
           for u in /studio /assistant /workflow/x; do curl -s -o /dev/null -w "$u %{http_code} %{size_download}B %{time_total}s " localhost:3000$u; echo; done
@@ -45,10 +46,12 @@ jobs:
           head -c 52428800 /dev/urandom > big.bin
           curl -s -o /dev/null -w "upload: %{http_code} %{time_total}s " -X POST --data-binary @big.bin localhost:3000/api/upload-binary; echo
       - name: Server health after load
+        if: always()
         run: |
           curl -s -o /dev/null -w "after load: %{http_code} %{time_total}s\n" localhost:3000
           ps -o rss,cmd -C node | sort -rn | head -3
           echo "--- errors in server log ---"; grep -ciE "error|unhandled|ECONN" server.log || true; tail -30 server.log
       - name: Dependency audit
+        if: always()
         working-directory: app
         run: npm audit --omit=dev 2>&1 | tail -25 || true
