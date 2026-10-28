@@ -43,8 +43,7 @@ jobs:
           autocannon -c 50 -d 10 -m POST -H 'content-type: application/json' -b '{"bad":' --renderStatusCodes http://localhost:3000/api/v1/get_upload_url 2>&1 | grep -E "Latency|requests in|2xx|errors|\["
           echo "=== 50MB junk upload ==="
           head -c 52428800 /dev/urandom > big.bin
-          curl -s -o /dev/null -w "upload: %{http_code} %{time_total}s
-" -X POST --data-binary @big.bin localhost:3000/api/upload-binary
+          curl -s -o /dev/null -w "upload: %{http_code} %{time_total}s " -X POST --data-binary @big.bin localhost:3000/api/upload-binary; echo
       - name: Server health after load
         run: |
           curl -s -o /dev/null -w "after load: %{http_code} %{time_total}s\n" localhost:3000
